@@ -2,7 +2,7 @@
 
 set -x
 
-sudo cp lxc-rackos-minimal /usr/share/lxc/templates/lxc-minimal
+sudo cp lxc-rackos-minimal /usr/share/lxc/templates/lxc-rackos-minimal
 
 sudo /sbin/pvremove /dev/loop0
 sudo /sbin/vgremove lxc
@@ -20,7 +20,7 @@ sudo /sbin/pvcreate /dev/loop0
 sudo /sbin/vgcreate lxc /dev/loop0
 
 # Create lxc instance
-sudo lxc-create -t minimal -n test -B lvm --fssize 8M -l DEBUG -o /tmp/lxc.log
+sudo lxc-create -t rackos-minimal -n test -B lvm --fssize 8M -l DEBUG -o /tmp/lxc.log
 sudo lxc-start -d -n test -l DEBUG -o /tmp/lxc.log
 cat /tmp/lxc.log
 
