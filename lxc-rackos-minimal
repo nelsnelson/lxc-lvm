@@ -1,0 +1,219 @@
+#!/bin/bash
+
+#
+# lxc: linux Container library
+
+# Authors:
+# Daniel Lezcano <daniel.lezcano@free.fr>
+# Nels Nelson <nels.nelson@rackspace.com>
+# containers@rackspace.com
+
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+# Detect use under userns (unsupported)
+for arg in "$@"; do
+    [ "$arg" = "--" ] && break
+    if [ "$arg" = "--mapped-uid" -o "$arg" = "--mapped-gid" ]; then
+        echo "This template can't be used for unprivileged containers." 1>&2
+        echo "You may want to try the \"download\" template instead." 1>&2
+        exit 1
+    fi
+done
+
+# Make sure the usual locations are in PATH
+export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
+
+LXC_TEMPLATE_CONFIG=${LXC_TEMPLATE_CONFIG:-"/usr/share/lxc/config"}
+ROOT_PASSWD=${ROOT_PASSWD:-"root"}
+
+install()
+{
+    rootfs=$1
+
+    tree="\
+$rootfs/etc/init.d \
+$rootfs/etc/rc.d \
+$rootfs/etc/sysconfig/network-scripts \
+$rootfs/dev/shm \
+$rootfs/run/shm \
+$rootfs/proc \
+$rootfs/sys \
+$rootfs/bin \
+$rootfs/sbin \
+$rootfs/usr \
+$rootfs/tmp \
+$rootfs/home \
+$rootfs/root \
+$rootfs/lib \
+$rootfs/lib64"
+
+    mkdir -p $tree
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+configure()
+{
+    rootfs=$1
+
+    cat <<EOF > $rootfs/etc/passwd
+root:x:0:0:root:/root:/bin/bash
+EOF
+
+    cat <<EOF > $rootfs/etc/group
+root:x:0:root
+EOF
+
+    return 0
+}
+
+copy_configuration()
+{
+    path=$1
+    rootfs=$2
+    name=$3
+
+    grep -q "^lxc.rootfs" $path/config 2>/dev/null || echo "lxc.rootfs = $rootfs" >> $path/config
+cat <<EOF >> $path/config
+lxc.utsname = $name
+lxc.pts = 1024
+lxc.kmsg = 0
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
+
+# When using LXC with apparmor, uncomment the next line to run unconfined:
+#lxc.aa_profile = unconfined
+
+lxc.mount.entry = /dev dev none ro,bind 0 0
+lxc.mount.entry = /lib lib none ro,bind 0 0
+lxc.mount.entry = /bin bin none ro,bind 0 0
+lxc.mount.entry = /usr usr none ro,bind 0 0
+lxc.mount.entry = /sbin sbin none ro,bind 0 0
+lxc.mount.entry = /usr/share/lxc/templates/lxc-minimal sbin/init none ro,bind 0 0
+lxc.mount.entry = proc proc proc nodev,noexec,nosuid 0 0
+lxc.mount.entry = sysfs sys sysfs ro 0 0
+lxc.mount.entry = /etc/init.d etc/init.d none ro,bind 0 0
+EOF
+
+    # Oracle Linux and Fedora need the following two bind mounted
+    if [ -d /etc/sysconfig/network-scripts ]; then
+        cat <<EOF >> $path/config
+lxc.mount.entry = /etc/sysconfig/network-scripts etc/sysconfig/network-scripts none ro,bind 0 0
+EOF
+    fi
+
+    if [ -d /etc/rc.d ]; then
+        cat <<EOF >> $path/config
+lxc.mount.entry = /etc/rc.d etc/rc.d none ro,bind 0 0
+EOF
+    fi
+
+    # if no .ipv4 section in config, then have the container run dhcp
+    #grep -q "^lxc.network.ipv4" $path/config || touch $rootfs/run-dhcp
+
+    if [ "$(uname -m)" = "x86_64" ]; then
+        cat <<EOF >> $path/config
+lxc.mount.entry = /lib64 lib64 none ro,bind 0 0
+EOF
+    fi
+}
+
+usage()
+{
+    cat <<EOF
+$1 -h|--help -p|--path=<path> [--rootfs=<path>]
+EOF
+    return 0
+}
+
+check_for_cmd()
+{
+    cmd_path=`type $1`
+    if [ $? -ne 0 ]; then
+        echo "The command '$1' $cmd_path is not accessible on the system"
+        exit 1
+    fi
+    # we use cut instead of awk because awk is alternatives symlink on ubuntu
+    # and /etc/alternatives isn't bind mounted
+    cmd_path=`echo $cmd_path |cut -d ' ' -f 3`
+}
+
+options=$(getopt -o hp:n:S: -l help,rootfs:,path:,name: -- "$@")
+if [ $? -ne 0 ]; then
+        usage $(basename $0)
+    exit 1
+fi
+eval set -- "$options"
+
+while true
+do
+    case "$1" in
+        -h|--help)      usage $0 && exit 0;;
+        -p|--path)      path=$2; shift 2;;
+        --rootfs)       rootfs=$2; shift 2;;
+        -n|--name)      name=$2; shift 2;;
+        --)             shift 1; break ;;
+        *)              break ;;
+    esac
+done
+
+if [ "$(id -u)" != "0" ]; then
+    echo "This script should be run as 'root'"
+    exit 1
+fi
+
+if [ $0 = "/sbin/init" ]; then
+
+    PATH="$PATH:/bin:/sbin:/usr/sbin"
+    check_for_cmd /usr/lib/lxc/lxc-init
+
+    exit 1
+fi
+
+if [ -z "$path" ]; then
+    echo "'path' parameter is required"
+    exit 1
+fi
+
+# detect rootfs
+config="$path/config"
+if [ -z "$rootfs" ]; then
+    if grep -q '^lxc.rootfs' $config 2>/dev/null ; then
+        rootfs=$(awk -F= '/^lxc.rootfs =/{ print $2 }' $config)
+    else
+        rootfs=$path/rootfs
+    fi
+fi
+
+install $rootfs
+if [ $? -ne 0 ]; then
+    echo "failed to install minimal's rootfs"
+    exit 1
+fi
+
+configure $rootfs
+if [ $? -ne 0 ]; then
+    echo "failed to configure minimal template"
+    exit 1
+fi
+
+copy_configuration $path $rootfs $name
+if [ $? -ne 0 ]; then
+    echo "failed to write configuration file"
+    exit 1
+fi
+
