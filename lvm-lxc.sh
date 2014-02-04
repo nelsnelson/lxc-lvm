@@ -2,12 +2,14 @@
 
 set -x
 
-/bin/rm -f /tmp/lxc.log
-/bin/rm -f /tmp/test.img
-sudo /sbin/losetup -d /dev/loop0
-sudo /sbin/vgremove lxc
+sudo cp lxc-rackos-minimal /usr/share/lxc/templates/lxc-minimal
+
 sudo /sbin/pvremove /dev/loop0
+sudo /sbin/vgremove lxc
+sudo /sbin/losetup -d /dev/loop0
+/bin/rm -f /tmp/test.img
 sudo lxc-destroy -n test
+/bin/rm -f /tmp/lxc.log
 
 # Create disk iamge for lvm 
 /bin/dd if=/dev/zero of=/tmp/test.img bs=1024 count=10240
