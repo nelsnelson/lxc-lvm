@@ -36,7 +36,7 @@ sudo lxc-create -t rackos-minimal -n test -B lvm --fssize 8M -l DEBUG -o /tmp/lx
 sudo lxc-start -d -n test -l DEBUG -o /tmp/lxc.log
 
 sudo lxc-ls | grep -q test
-if [[ $? -ne 0 ]]; then
+if [ $? -ne 0 ]; then
     set +x
     cat /tmp/lxc.log
     tear_down
