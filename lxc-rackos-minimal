@@ -35,14 +35,14 @@ done
 # Make sure the usual locations are in PATH
 export PATH=$PATH:/usr/sbin:/usr/bin:/sbin:/bin
 
-LXC_TEMPLATE_CONFIG=${LXC_TEMPLATE_CONFIG:-"/usr/share/lxc/config"}
-ROOT_PASSWD=${ROOT_PASSWD:-"root"}
-
-install()
+install_minimal()
 {
     rootfs=$1
 
     tree="\
+$rootfs/var/run/minimal \
+$rootfs/var/empty/minimal \
+$rootfs/var/lib/empty/minimal \
 $rootfs/etc/init.d \
 $rootfs/etc/rc.d \
 $rootfs/etc/sysconfig/network-scripts \
@@ -67,7 +67,7 @@ $rootfs/lib64"
     return 0
 }
 
-configure()
+configure_minimal()
 {
     rootfs=$1
 
@@ -95,15 +95,12 @@ lxc.pts = 1024
 lxc.kmsg = 0
 lxc.cap.drop = sys_module mac_admin mac_override sys_time
 
-# When using LXC with apparmor, uncomment the next line to run unconfined:
-#lxc.aa_profile = unconfined
-
 lxc.mount.entry = /dev dev none ro,bind 0 0
 lxc.mount.entry = /lib lib none ro,bind 0 0
 lxc.mount.entry = /bin bin none ro,bind 0 0
 lxc.mount.entry = /usr usr none ro,bind 0 0
 lxc.mount.entry = /sbin sbin none ro,bind 0 0
-lxc.mount.entry = /usr/share/lxc/templates/lxc-rackos-minimal sbin/init none ro,bind 0 0
+lxc.mount.entry = /usr/share/lxc/templates/lxc-minimal sbin/init none ro,bind 0 0
 lxc.mount.entry = proc proc proc nodev,noexec,nosuid 0 0
 lxc.mount.entry = sysfs sys sysfs ro 0 0
 lxc.mount.entry = /etc/init.d etc/init.d none ro,bind 0 0
@@ -123,7 +120,7 @@ EOF
     fi
 
     # if no .ipv4 section in config, then have the container run dhcp
-    #grep -q "^lxc.network.ipv4" $path/config || touch $rootfs/run-dhcp
+    grep -q "^lxc.network.ipv4" $path/config || touch $rootfs/run-dhcp
 
     if [ "$(uname -m)" = "x86_64" ]; then
         cat <<EOF >> $path/config
@@ -176,11 +173,22 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
+cat << 'EOF' > /tmp/boringd
+#! /usr/bin/env bash
+/usr/bin/daemon -- watch ls /tmp
+EOF
+chmod +x /tmp/boringd
+
+# When lxc-start
 if [ $0 = "/sbin/init" ]; then
 
     PATH="$PATH:/bin:/sbin:/usr/sbin"
     check_for_cmd /usr/lib/lxc/lxc-init
+    check_for_cmd /tmp/boringd
+    daemon_path=$cmd_path
+    echo "init'ing with ${daemon_path}"
 
+    exec /usr/lib/lxc/lxc-init -l TRACE -- $daemon_path
     exit 1
 fi
 
@@ -199,13 +207,13 @@ if [ -z "$rootfs" ]; then
     fi
 fi
 
-install $rootfs
+install_minimal $rootfs
 if [ $? -ne 0 ]; then
     echo "failed to install minimal's rootfs"
     exit 1
 fi
 
-configure $rootfs
+configure_minimal $rootfs
 if [ $? -ne 0 ]; then
     echo "failed to configure minimal template"
     exit 1
