@@ -173,11 +173,27 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
-cat << 'EOF' > /tmp/boringd
-#! /usr/bin/env bash
-/usr/bin/daemon -- watch ls /tmp
+rm -f /tmp/boringd
+cat << 'EOF' > /tmp/boringd.c
+#include <time.h>
+#include <unistd.h>
+
+int main()
+{
+    if (daemon(0,0) == -1)
+    {
+         err(1, NULL);
+    }
+
+    while (1)
+    {
+        sleep(15000);
+    }
+}
+
 EOF
-chmod +x /tmp/boringd
+/usr/bin/gcc /tmp/boringd.c -o /tmp/boringd
+rm -f /tmp/boringd.c
 
 # When lxc-start
 if [ $0 = "/sbin/init" ]; then
