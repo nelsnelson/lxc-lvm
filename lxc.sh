@@ -15,8 +15,11 @@ sudo lxc-start -d -n test -l TRACE -o /tmp/lxc.log
 sudo lxc-ls
 sudo lxc-info -n test -l TRACE -o /tmp/lxc.log
 sudo lxc-attach -n test -- echo hello world
+cat /tmp/lxc.log
 set +x
 
 exec &>/dev/null
 sudo rm -f /tmp/lxc.log
 exec &>/dev/tty
+
+exit
