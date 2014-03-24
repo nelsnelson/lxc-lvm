@@ -2,11 +2,9 @@
 
 sudo cp -f lxc-rackos-minimal /usr/share/lxc/templates/lxc-rackos-minimal
 
-exec &>/dev/null
 sudo lxc-stop -n test
 sudo lxc-destroy -n test
 sudo rm -f /tmp/lxc.log
-exec &>/dev/tty
 
 set -x
 # Create lxc instance
@@ -18,8 +16,6 @@ sudo lxc-attach -n test -- echo hello world
 cat /tmp/lxc.log
 set +x
 
-exec &>/dev/null
 sudo rm -f /tmp/lxc.log
-exec &>/dev/tty
 
 exit
