@@ -2,7 +2,7 @@
 
 sudo cp -f lxc-rackos-minimal /usr/share/lxc/templates/lxc-rackos-minimal
 
-sudo lxc-stop -n test
+sudo lxc-stop -k -n test
 sudo lxc-destroy -n test
 sudo rm -f /tmp/lxc.log
 
