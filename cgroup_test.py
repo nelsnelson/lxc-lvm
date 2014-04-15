@@ -64,7 +64,7 @@ def child():
     time.sleep(1)
     print 'child'
     MB = 1024 ** 2 
-    s = 'c' * 2 * MB
+    s = 'c' * ((2 * MB) + 1)
     print s
     print len(s)
     sys.exit(0)
